@@ -15,10 +15,10 @@ npm install
 
 ```bash
 # macOS / Linux
-cp .env.example .env
+mv .env.example .env
 
 # Windows PowerShell
-Copy-Item .env.example .env
+move .env.example .env
 ```
 
 4. Fill required environment values in `.env`:
