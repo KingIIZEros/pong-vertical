@@ -1,4 +1,5 @@
 import { getSettingsSync, resolveTuning, subscribeSettings } from '@/lib/settings';
+import { WEATHER_API_BASE_URL, WEATHER_CITY, WEATHER_LAT, WEATHER_LON } from '@/lib/env';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
@@ -23,10 +24,6 @@ const DEFAULT_TIME_ATTACK_SECONDS = 60;
 // - Wind adds a gentle horizontal drift to the ball
 // - Stormy codes make the AI slightly more aggressive
 // Open-Meteo is free and does not require an API key.
-const WEATHER_CITY = 'Bangkok';
-const WEATHER_LAT = 13.7563;
-const WEATHER_LON = 100.5018;
-
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const clampInt = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.trunc(v)));
 
@@ -274,7 +271,7 @@ export const PongGame: React.FC<PongGameProps> = ({
         const timeout = setTimeout(() => controller?.abort(), 4500);
 
         const url =
-          `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}` +
+          `${WEATHER_API_BASE_URL}?latitude=${WEATHER_LAT}` +
           `&longitude=${WEATHER_LON}` +
           `&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m` +
           `&timezone=auto`;

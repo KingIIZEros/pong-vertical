@@ -3,8 +3,7 @@
  * Works on React Native without native dependencies
  */
 
-const FIREBASE_PROJECT_ID = 'water-pong';
-const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+import { FIRESTORE_BASE_URL } from './env';
 
 // =============================================================================
 // Types
@@ -366,4 +365,5 @@ export async function firebaseDeleteTimeAttackScore(scoreId: string): Promise<bo
         return false;
     }
 }
+
 

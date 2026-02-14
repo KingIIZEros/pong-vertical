@@ -155,9 +155,17 @@ export interface SaveScoreOptions {
 export async function saveFirstToXWithSync(input: SaveFirstToXInput, options: SaveScoreOptions): Promise<void> {
   const isWin = input.winnerId === input.playerId;
 
-  await updatePlayerStats(input.playerId, isWin);
-  if (input.opponentId !== AI_PLAYER_ID) {
-    await updatePlayerStats(input.opponentId, !isWin);
+  if (options.isOnlineMode) {
+    // Online match: both clients submit result for the same room.
+    // To avoid double increment, only winner client updates win count.
+    if (isWin) {
+      await updatePlayerStats(input.playerId, true);
+    }
+  } else {
+    await updatePlayerStats(input.playerId, isWin);
+    if (input.opponentId !== AI_PLAYER_ID) {
+      await updatePlayerStats(input.opponentId, !isWin);
+    }
   }
 
   const createdAt = Date.now();

@@ -3,9 +3,7 @@
  */
 
 import { getUserId } from './auth';
-
-const FIREBASE_PROJECT_ID = 'water-pong';
-const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+import { FIRESTORE_BASE_URL } from './env';
 
 // =============================================================================
 // Types
@@ -378,3 +376,4 @@ export function pollRoom(
         active = false;
     };
 }
+

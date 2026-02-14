@@ -1,10 +1,11 @@
 import { getSettingsSync, resolveTuning, subscribeSettings } from '@/lib/settings';
+import { WEATHER_API_BASE_URL, WEATHER_CITY, WEATHER_LAT, WEATHER_LON } from '@/lib/env';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Dimensions, PanResponder, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, PanResponder, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -21,9 +22,6 @@ const MAX_BALL_SPEED = 12;
 // - Wind adds a gentle horizontal drift to the ball
 // - Stormy codes make the AI slightly more aggressive
 // Open-Meteo is free and does not require an API key.
-const WEATHER_CITY = 'Bangkok';
-const WEATHER_LAT = 13.7563;
-const WEATHER_LON = 100.5018;
 
 type WeatherMod = {
   city: string;
@@ -151,9 +149,7 @@ export const PongGame: React.FC<PongGameProps> = ({ mode, onGameOver, onPausePre
 const weatherModRef = useRef<WeatherMod>(
   computeWeatherMod({ city: WEATHER_CITY, tempC: null, windMS: null, windDirDeg: null, code: null })
 );
-const [weatherMod, setWeatherMod] = useState<WeatherMod>(() => weatherModRef.current);
 const [weatherPill, setWeatherPill] = useState<string>('WX: SYNC…');
-const [wxTipVisible, setWxTipVisible] = useState(false);
 
 useEffect(() => {
   let cancelled = false;
@@ -164,7 +160,7 @@ useEffect(() => {
       const timeout = setTimeout(() => controller?.abort(), 4500);
 
       const url =
-        `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}` +
+        `${WEATHER_API_BASE_URL}?latitude=${WEATHER_LAT}` +
         `&longitude=${WEATHER_LON}` +
         `&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m` +
         `&timezone=auto`;
@@ -183,7 +179,6 @@ useEffect(() => {
 
       const mod = computeWeatherMod({ city: WEATHER_CITY, tempC, windMS, windDirDeg, code });
       weatherModRef.current = mod;
-      if (!cancelled) setWeatherMod(mod);
 
       if (!cancelled) {
         const tStr = tempC === null ? '?' : Math.round(tempC).toString();
@@ -193,7 +188,6 @@ useEffect(() => {
     } catch {
       if (!cancelled) setWeatherPill('WX: OFFLINE');
       weatherModRef.current = computeWeatherMod({ city: WEATHER_CITY, tempC: null, windMS: null, windDirDeg: null, code: null });
-      if (!cancelled) setWeatherMod(weatherModRef.current);
     }
   };
 
@@ -204,31 +198,6 @@ useEffect(() => {
     clearInterval(id);
   };
 }, []);
-
-  const weatherEffectLines = (() => {
-    // Show the *delta* from baseline settings.
-    if (weatherPill === 'WX: OFFLINE') return ['No weather effects (offline).'];
-    const mod = weatherMod;
-    const lines: string[] = [];
-
-    const sp = Math.round((mod.speedMul - 1) * 100);
-    lines.push(`Ball speed: ${sp >= 0 ? '+' : ''}${sp}%`);
-
-    const ai = Math.round((mod.aiMul - 1) * 100);
-    lines.push(`AI speed: ${ai >= 0 ? '+' : ''}${ai}%`);
-
-    const w = mod.windPushX;
-    if (Math.abs(w) < 0.005) {
-      lines.push('Wind drift: 0');
-    } else {
-      const dir = w > 0 ? '→' : '←';
-      lines.push(`Wind drift: ${w > 0 ? '+' : ''}${w.toFixed(3)} px/frame ${dir}`);
-    }
-
-    // Add a small hint about the preset label as context.
-    lines.push(`Preset: ${mod.label}`);
-    return lines;
-  })();
 
   // Global tuning (from /settings)
   const tuningRef = useRef(resolveTuning(getSettingsSync()));
@@ -529,26 +498,11 @@ useEffect(() => {
           <Ionicons name="pause" size={24} color="#fff" />
         </TouchableOpacity>
 
-        <Pressable
-          onHoverIn={() => setWxTipVisible(true)}
-          onHoverOut={() => setWxTipVisible(false)}
-          onPress={() => setWxTipVisible((v) => !v)}
-          style={styles.weatherBadge}
-        >
+        <View style={styles.weatherBadge}>
           <Text style={styles.weatherText} numberOfLines={1}>
             {weatherPill}
           </Text>
-
-          {wxTipVisible && (
-            <View style={styles.weatherTooltip}>
-              {weatherEffectLines.map((line, idx) => (
-                <Text key={idx} style={styles.weatherTooltipText}>
-                  {line}
-                </Text>
-              ))}
-            </View>
-          )}
-        </Pressable>
+        </View>
 
         <View style={styles.centerInfo}>
           {mode === 'TIME_ATTACK' && (
@@ -658,30 +612,8 @@ weatherBadge: {
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.12)',
   maxWidth: 170,
-  position: 'relative',
 },
 weatherText: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '800' },
-weatherTooltip: {
-  position: 'absolute',
-  top: '100%',
-  left: 0,
-  marginTop: 8,
-  paddingHorizontal: 10,
-  paddingVertical: 8,
-  borderRadius: 14,
-  backgroundColor: 'rgba(0,0,0,0.88)',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.14)',
-  zIndex: 2000,
-  minWidth: 190,
-},
-weatherTooltipText: {
-  color: 'rgba(255,255,255,0.92)',
-  fontSize: 12,
-  fontWeight: '700',
-  lineHeight: 16,
-  marginBottom: 4,
-},
 
   centerInfo: { flex: 1, alignItems: 'center' },
   timer: { color: '#00f3ff', fontSize: 28, fontWeight: '900' },
