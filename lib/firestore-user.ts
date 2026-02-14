@@ -3,6 +3,14 @@
  * Handles creating and updating user profiles (ID, Name) in Firestore
  */
 
+import { checkNetworkStatus } from './network';
+import {
+    SQLitePlayer,
+    sqliteGetAllPlayers,
+    sqliteGetPlayer,
+    sqliteIncrementWin,
+    sqliteUpsertPlayer,
+} from './sqlite';
 
 const FIREBASE_PROJECT_ID = 'water-pong';
 const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
@@ -52,10 +60,57 @@ function fromFirestoreDocument(doc: any): Record<string, any> {
     return result;
 }
 
+function fromSQLitePlayer(player: SQLitePlayer): UserProfile {
+    return {
+        uid: player.player_id,
+        displayName: player.player_name || 'Guest',
+        createdAt: player.player_created_date || 0,
+        updatedAt: player.player_updated_date ?? player.player_created_date ?? 0,
+        count_win: player.count_win || 0,
+    };
+}
+
+async function cacheUserProfile(profile: UserProfile): Promise<void> {
+    await sqliteUpsertPlayer({
+        player_id: profile.uid,
+        player_name: profile.displayName || 'Guest',
+        player_created_date: profile.createdAt || Date.now(),
+        player_updated_date: profile.updatedAt || profile.createdAt || Date.now(),
+        count_win: profile.count_win || 0,
+        count_lose: 0,
+    });
+}
+
+function mergeProfiles(localList: UserProfile[], remoteList: UserProfile[], limit: number): UserProfile[] {
+    const map = new Map<string, UserProfile>();
+
+    for (const user of localList) {
+        map.set(user.uid, user);
+    }
+    for (const user of remoteList) {
+        map.set(user.uid, user);
+    }
+
+    const merged = [...map.values()].sort((a, b) => {
+        const winDiff = (b.count_win || 0) - (a.count_win || 0);
+        if (winDiff !== 0) return winDiff;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+
+    return limit > 0 ? merged.slice(0, limit) : merged;
+}
+
 /**
- * Get user profile from Firestore
+ * Get user profile from Firestore (fallback to SQLite when offline)
  */
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
+    const localProfile = await sqliteGetPlayer(userId);
+    const online = await checkNetworkStatus();
+
+    if (!online) {
+        return localProfile ? fromSQLitePlayer(localProfile) : null;
+    }
+
     try {
         const url = `${FIRESTORE_BASE_URL}/${USERS_COLLECTION}/${userId}`;
         const res = await fetch(url);
@@ -63,18 +118,22 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
         if (res.ok) {
             const doc = await res.json();
             const data = fromFirestoreDocument(doc);
-            return {
-                uid: userId, // Document ID is the User ID
+            const profile: UserProfile = {
+                uid: userId,
                 displayName: data.displayName || 'Guest',
                 createdAt: data.createdAt || Date.now(),
                 updatedAt: data.updatedAt || Date.now(),
                 count_win: data.count_win || 0,
             };
+
+            await cacheUserProfile(profile);
+            return profile;
         }
-        return null;
+
+        return localProfile ? fromSQLitePlayer(localProfile) : null;
     } catch (error) {
         console.warn('getUserProfile error:', error);
-        return null;
+        return localProfile ? fromSQLitePlayer(localProfile) : null;
     }
 }
 
@@ -82,9 +141,11 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
  * Create or Update user profile
  */
 export async function updateUserProfile(userId: string, displayName: string): Promise<boolean> {
+    const now = Date.now();
+    let remoteOk = false;
+
     try {
         const url = `${FIRESTORE_BASE_URL}/${USERS_COLLECTION}/${userId}`;
-        const now = Date.now();
         const data = {
             displayName,
             updatedAt: now,
@@ -96,24 +157,36 @@ export async function updateUserProfile(userId: string, displayName: string): Pr
             body: JSON.stringify(toFirestoreDocument(data)),
         });
 
-        return res.ok;
+        remoteOk = res.ok;
     } catch (error) {
         console.warn('updateUserProfile error:', error);
-        return false;
     }
+
+    const existing = await sqliteGetPlayer(userId);
+    await sqliteUpsertPlayer({
+        player_id: userId,
+        player_name: displayName,
+        player_created_date: existing?.player_created_date ?? now,
+        player_updated_date: now,
+        count_win: existing?.count_win ?? 0,
+        count_lose: existing?.count_lose ?? 0,
+    });
+
+    return remoteOk;
 }
 
 /**
  * Increment user win count
  */
-/**
- * Increment user win count
- */
 export async function incrementUserWin(userId: string): Promise<void> {
     try {
-        // Correct endpoint for commit is on the database root
-        const url = `${FIRESTORE_BASE_URL}:commit`;
+        await sqliteIncrementWin(userId);
+    } catch {
+        // Ignore local cache update errors
+    }
 
+    try {
+        const url = `${FIRESTORE_BASE_URL}:commit`;
         const fullPath = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${USERS_COLLECTION}/${userId}`;
 
         const commitBody = {
@@ -147,20 +220,27 @@ export async function incrementUserWin(userId: string): Promise<void> {
 }
 
 /**
- * Get Leaderboard (Top 50 users by win count)
+ * Get Leaderboard (fallback to SQLite when offline)
  */
 export async function getLeaderboard(limit: number = 50): Promise<UserProfile[]> {
+    const localPlayers = await sqliteGetAllPlayers();
+    const localProfiles = localPlayers.map(fromSQLitePlayer);
+
+    const online = await checkNetworkStatus();
+    if (!online) {
+        return limit > 0 ? localProfiles.slice(0, limit) : localProfiles;
+    }
+
     try {
-        // Firestore REST API runQuery for sorting
         const url = `${FIRESTORE_BASE_URL}:runQuery`;
 
+        // Fetch all users for cache, then apply UI limit after merge.
         const query = {
             structuredQuery: {
                 from: [{ collectionId: USERS_COLLECTION }],
                 orderBy: [
                     { field: { fieldPath: 'count_win' }, direction: 'DESCENDING' }
                 ],
-                limit: limit
             }
         };
 
@@ -170,14 +250,15 @@ export async function getLeaderboard(limit: number = 50): Promise<UserProfile[]>
             body: JSON.stringify(query),
         });
 
-        if (res.ok) {
-            const list = await res.json();
-            // result is array of { document: ..., readTime: ... } or empty
+        if (!res.ok) {
+            return limit > 0 ? localProfiles.slice(0, limit) : localProfiles;
+        }
 
-            return list.map((item: any) => {
+        const list = await res.json();
+        const remoteProfiles: UserProfile[] = list
+            .map((item: any) => {
                 if (!item.document) return null;
                 const data = fromFirestoreDocument(item.document);
-                // Extract ID from document name pathname
                 const nameParts = item.document.name.split('/');
                 const id = nameParts[nameParts.length - 1];
 
@@ -187,13 +268,16 @@ export async function getLeaderboard(limit: number = 50): Promise<UserProfile[]>
                     createdAt: data.createdAt || 0,
                     updatedAt: data.updatedAt || 0,
                     count_win: data.count_win || 0,
-                };
-            }).filter(Boolean);
-        }
-        return [];
+                } as UserProfile;
+            })
+            .filter(Boolean);
+
+        await Promise.all(remoteProfiles.map((profile) => cacheUserProfile(profile)));
+
+        return mergeProfiles(localProfiles, remoteProfiles, limit);
     } catch (error) {
         console.warn('getLeaderboard error:', error);
-        return [];
+        return limit > 0 ? localProfiles.slice(0, limit) : localProfiles;
     }
 }
 
@@ -201,25 +285,32 @@ export async function getLeaderboard(limit: number = 50): Promise<UserProfile[]>
  * Create initial profile if it doesn't exist
  */
 export async function createInitialProfile(userId: string, defaultName: string = 'Guest'): Promise<void> {
-    const existing = await getUserProfile(userId);
-    if (!existing) {
-        const createUrl = `${FIRESTORE_BASE_URL}/${USERS_COLLECTION}/${userId}`;
-        const now = Date.now();
-        const data = {
-            displayName: defaultName,
-            createdAt: now,
-            updatedAt: now,
-            count_win: 0,
-        };
+    const now = Date.now();
+    const createUrl = `${FIRESTORE_BASE_URL}/${USERS_COLLECTION}/${userId}`;
+    const data = {
+        displayName: defaultName,
+        createdAt: now,
+        updatedAt: now,
+        count_win: 0,
+    };
 
-        try {
-            await fetch(createUrl, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(toFirestoreDocument(data)),
-            });
-        } catch (error) {
-            console.warn('createInitialProfile error:', error);
-        }
+    try {
+        await fetch(createUrl, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(toFirestoreDocument(data)),
+        });
+    } catch (error) {
+        console.warn('createInitialProfile error:', error);
     }
+
+    const existing = await sqliteGetPlayer(userId);
+    await sqliteUpsertPlayer({
+        player_id: userId,
+        player_name: defaultName,
+        player_created_date: existing?.player_created_date ?? now,
+        player_updated_date: now,
+        count_win: existing?.count_win ?? 0,
+        count_lose: existing?.count_lose ?? 0,
+    });
 }

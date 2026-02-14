@@ -2,24 +2,46 @@ import { getLeaderboard, UserProfile } from '@/lib/firestore-user';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function LeaderboardScreen() {
     const router = useRouter();
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
-    useEffect(() => {
-        loadData();
+    const fetchLeaderboard = useCallback(async () => {
+        return getLeaderboard(50);
     }, []);
 
-    const loadData = async () => {
+    useEffect(() => {
+        let alive = true;
         setLoading(true);
-        const data = await getLeaderboard(50);
-        setUsers(data);
-        setLoading(false);
-    };
+        fetchLeaderboard()
+            .then((data) => {
+                if (!alive) return;
+                setUsers(data);
+            })
+            .finally(() => {
+                if (!alive) return;
+                setLoading(false);
+            });
+
+        return () => {
+            alive = false;
+        };
+    }, [fetchLeaderboard]);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            const data = await fetchLeaderboard();
+            setUsers(data);
+        } finally {
+            setRefreshing(false);
+        }
+    }, [fetchLeaderboard]);
 
     const renderItem = ({ item, index }: { item: UserProfile; index: number }) => (
         <View style={styles.itemContainer}>
@@ -63,6 +85,8 @@ export default function LeaderboardScreen() {
                         data={users}
                         renderItem={renderItem}
                         keyExtractor={(item) => item.uid}
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
                         contentContainerStyle={styles.listContent}
                         ListEmptyComponent={
                             <View style={styles.center}>

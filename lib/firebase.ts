@@ -200,7 +200,7 @@ export async function firebaseSaveTimeAttackScore(
     }
 }
 
-export async function firebaseGetFirstToXScores(limitCount = 50, playerId?: string): Promise<FirebaseFirstToXScore[]> {
+export async function firebaseGetFirstToXScores(limitCount?: number, playerId?: string): Promise<FirebaseFirstToXScore[]> {
     try {
         const queryUrl = `${FIRESTORE_BASE_URL}:runQuery`;
 
@@ -231,13 +231,17 @@ export async function firebaseGetFirstToXScores(limitCount = 50, playerId?: stri
             };
         }
 
+        const structuredQuery: Record<string, any> = {
+            from: [{ collectionId: FIRST_TO_X_COLLECTION }],
+            where: filter,
+            // orderBy removed to avoid needing composite index for OR queries
+        };
+        if (typeof limitCount === 'number' && limitCount > 0) {
+            structuredQuery.limit = limitCount;
+        }
+
         const queryBody = {
-            structuredQuery: {
-                from: [{ collectionId: FIRST_TO_X_COLLECTION }],
-                where: filter,
-                // orderBy removed to avoid needing composite index for OR queries
-                limit: limitCount,
-            },
+            structuredQuery,
         };
 
         const res = await fetch(queryUrl, {
@@ -273,7 +277,7 @@ export async function firebaseGetFirstToXScores(limitCount = 50, playerId?: stri
     }
 }
 
-export async function firebaseGetTimeAttackScores(limitCount = 50, playerId?: string): Promise<FirebaseTimeAttackScore[]> {
+export async function firebaseGetTimeAttackScores(limitCount?: number, playerId?: string): Promise<FirebaseTimeAttackScore[]> {
     try {
         const queryUrl = `${FIRESTORE_BASE_URL}:runQuery`;
 
@@ -288,13 +292,17 @@ export async function firebaseGetTimeAttackScores(limitCount = 50, playerId?: st
             };
         }
 
+        const structuredQuery: Record<string, any> = {
+            from: [{ collectionId: TIME_ATTACK_COLLECTION }],
+            where: filter,
+            // orderBy removed to avoid missing index issues on filtered queries
+        };
+        if (typeof limitCount === 'number' && limitCount > 0) {
+            structuredQuery.limit = limitCount;
+        }
+
         const queryBody = {
-            structuredQuery: {
-                from: [{ collectionId: TIME_ATTACK_COLLECTION }],
-                where: filter,
-                // orderBy removed to avoid missing index issues on filtered queries
-                limit: limitCount,
-            },
+            structuredQuery,
         };
 
         const res = await fetch(queryUrl, {
@@ -326,3 +334,36 @@ export async function firebaseGetTimeAttackScores(limitCount = 50, playerId?: st
         return [];
     }
 }
+
+// =============================================================================
+// Delete Functions
+// =============================================================================
+
+/**
+ * Delete FirstToX score from Firestore
+ */
+export async function firebaseDeleteFirstToXScore(scoreId: string): Promise<boolean> {
+    try {
+        const url = `${FIRESTORE_BASE_URL}/${FIRST_TO_X_COLLECTION}/${scoreId}`;
+        const res = await fetch(url, { method: 'DELETE' });
+        return res.ok || res.status === 404; // 404 means already deleted
+    } catch (error) {
+        console.warn('Firebase deleteFirstToXScore failed:', error);
+        return false;
+    }
+}
+
+/**
+ * Delete TimeAttack score from Firestore
+ */
+export async function firebaseDeleteTimeAttackScore(scoreId: string): Promise<boolean> {
+    try {
+        const url = `${FIRESTORE_BASE_URL}/${TIME_ATTACK_COLLECTION}/${scoreId}`;
+        const res = await fetch(url, { method: 'DELETE' });
+        return res.ok || res.status === 404; // 404 means already deleted
+    } catch (error) {
+        console.warn('Firebase deleteTimeAttackScore failed:', error);
+        return false;
+    }
+}
+
