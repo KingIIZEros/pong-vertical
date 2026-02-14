@@ -68,6 +68,7 @@ Image example:
 
 Image example:
 ![History Screen](./docs/images/history-screen.png)
+![Leaderboard Screen](./docs/images/Leaderboard.png)
 
 ### 5) Settings
 - Update profile/display name.
