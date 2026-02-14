@@ -5,7 +5,7 @@ Core gameplay is vertical Pong with multiple modes, local history, and online sy
 
 ## Features
 
-- Play modes: `FIRST_TO_5`, `FIRST_TO_X`, `TIME_ATTACK`
+- Play modes: `FIRST_TO_X`, `TIME_ATTACK`
 - Online lobby/game flow (`online-lobby`, `online-game`)
 - Match history and leaderboard screens
 - Local-first persistence (SQLite) with remote sync (Firebase/Firestore)
@@ -50,10 +50,10 @@ npm install
 
 ```bash
 # macOS / Linux
-cp .env.example .env
+mv .env.example .env
 
 # Windows PowerShell
-Copy-Item .env.example .env
+move .env.example .env
 ```
 
 3. Fill required values in `.env`
