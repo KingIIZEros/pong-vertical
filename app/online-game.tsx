@@ -29,6 +29,7 @@ export default function OnlineGameScreen() {
     const [winner, setWinner] = useState<'me' | 'opponent' | null>(null);
     const [isPaused, setIsPaused] = useState(false);
     const [checking, setChecking] = useState(false);
+    const [isFinishing, setIsFinishing] = useState(false);
 
     const stopSubscriptionRef = useRef<(() => void) | null>(null);
     const gameOverRef = useRef(false);
@@ -118,45 +119,53 @@ export default function OnlineGameScreen() {
 
     // Save results and update stats
     const handleFinish = async () => {
-        if (!room || !userId) {
+        if (isFinishing) return;
+        setIsFinishing(true);
+
+        try {
+            if (!room || !userId) {
+                router.replace('/');
+                return;
+            }
+
+            // Stop subscription
+            if (stopSubscriptionRef.current) {
+                stopSubscriptionRef.current();
+            }
+
+            // Fetch actual user name
+            const userProfile = await getUserProfile(userId);
+            const name = userProfile?.displayName || 'Guest';
+
+            const player = await createOrGetPlayer(name, userId || undefined);
+            const isWin = winner === 'me';
+
+            // Determine opponent ID
+            const isPlayer1 = isPlayer1Ref.current;
+            const opponentIdStr = isPlayer1 ? room.player2_id : room.player1_id;
+            // If opponent ID is missing (e.g. they disconnected early or null), fallback to 999 but try to get it
+            const opponentId = opponentIdStr || 999;
+
+            console.log('Saving result against opponent:', opponentId);
+
+            // Save score to database (handles stats update internally)
+            await saveFirstToXWithSync(
+                {
+                    playerId: player.player_id,
+                    opponentId: opponentId,
+                    playerScore: myScore,
+                    opponentScore: opponentScore,
+                    winnerId: isWin ? player.player_id : opponentId,
+                    timeElapsed: 0,
+                },
+                { playerName: name, isOnlineMode: true, dedupId: roomId }
+            );
+
             router.replace('/');
-            return;
+        } catch (error) {
+            console.warn('Failed to finalize online match:', error);
+            setIsFinishing(false);
         }
-
-        // Stop subscription
-        if (stopSubscriptionRef.current) {
-            stopSubscriptionRef.current();
-        }
-
-        // Fetch actual user name
-        const userProfile = await getUserProfile(userId);
-        const name = userProfile?.displayName || 'Guest';
-
-        const player = await createOrGetPlayer(name, userId || undefined);
-        const isWin = winner === 'me';
-
-        // Determine opponent ID
-        const isPlayer1 = isPlayer1Ref.current;
-        const opponentIdStr = isPlayer1 ? room.player2_id : room.player1_id;
-        // If opponent ID is missing (e.g. they disconnected early or null), fallback to 999 but try to get it
-        const opponentId = opponentIdStr || 999;
-
-        console.log('Saving result against opponent:', opponentId);
-
-        // Save score to database (handles stats update internally)
-        await saveFirstToXWithSync(
-            {
-                playerId: player.player_id,
-                opponentId: opponentId,
-                playerScore: myScore,
-                opponentScore: opponentScore,
-                winnerId: isWin ? player.player_id : opponentId,
-                timeElapsed: 0,
-            },
-            { playerName: name, isOnlineMode: true, dedupId: roomId }
-        );
-
-        router.replace('/');
     };
 
     const isPlayer1 = isPlayer1Ref.current;
@@ -247,8 +256,12 @@ export default function OnlineGameScreen() {
                             </View>
                         </View>
 
-                        <TouchableOpacity style={globalStyles.primaryBtn} onPress={handleFinish}>
-                            <Text style={globalStyles.primaryBtnText}>CONTINUE</Text>
+                        <TouchableOpacity
+                            style={[globalStyles.primaryBtn, isFinishing && { opacity: 0.6 }]}
+                            onPress={handleFinish}
+                            disabled={isFinishing}
+                        >
+                            <Text style={globalStyles.primaryBtnText}>{isFinishing ? 'SAVING...' : 'CONTINUE'}</Text>
                         </TouchableOpacity>
                     </LinearGradient>
                 </View>

@@ -3,7 +3,7 @@
  * Uses EventSource (Server-Sent Events) for real-time updates
  */
 
-const FIREBASE_DATABASE_URL = 'https://water-pong-default-rtdb.firebaseio.com';
+import { FIREBASE_DATABASE_URL } from './env';
 
 // =============================================================================
 // Types
@@ -164,3 +164,4 @@ export function rtSubscribeToRoom(
         active = false;
     };
 }
+

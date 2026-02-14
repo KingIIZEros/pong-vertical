@@ -11,9 +11,7 @@ import {
     sqliteIncrementWin,
     sqliteUpsertPlayer,
 } from './sqlite';
-
-const FIREBASE_PROJECT_ID = 'water-pong';
-const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+import { FIREBASE_PROJECT_ID, FIRESTORE_BASE_URL } from './env';
 const USERS_COLLECTION = 'users';
 
 export interface UserProfile {
@@ -314,3 +312,4 @@ export async function createInitialProfile(userId: string, defaultName: string =
         count_lose: existing?.count_lose ?? 0,
     });
 }
+
